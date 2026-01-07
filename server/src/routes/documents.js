@@ -40,10 +40,10 @@ function formatBlock(b) {
 /**
  * 문서 접근 권한 확인 헬퍼
  */
-function checkDocumentAccess(userId, documentId, requiredRole = 'viewer') {
+async function checkDocumentAccess(userId, documentId, requiredRole = 'viewer') {
   const roleOrder = { viewer: 0, writer: 1, editor: 2, admin: 3, owner: 4 };
 
-  const access = db.prepare(`
+  const [rows] = await db.execute(`
     SELECT
       CASE WHEN w.owner_id = ? THEN 'owner' ELSE wm.role END as role
     FROM documents d
@@ -51,39 +51,39 @@ function checkDocumentAccess(userId, documentId, requiredRole = 'viewer') {
     JOIN workspaces w ON c.workspace_id = w.id
     LEFT JOIN workspace_members wm ON w.id = wm.workspace_id AND wm.user_id = ?
     WHERE d.id = ? AND (w.owner_id = ? OR wm.user_id = ?)
-  `).get(userId, userId, documentId, userId, userId);
+  `, [userId, userId, documentId, userId, userId]);
 
-  if (!access) return null;
+  if (rows.length === 0) return null;
 
-  const hasAccess = roleOrder[access.role] >= roleOrder[requiredRole];
-  return hasAccess ? access.role : null;
+  const hasAccess = roleOrder[rows[0].role] >= roleOrder[requiredRole];
+  return hasAccess ? rows[0].role : null;
 }
 
 /**
  * 카테고리 접근 권한 확인 헬퍼
  */
-function checkCategoryAccess(userId, categoryId, requiredRole = 'viewer') {
+async function checkCategoryAccess(userId, categoryId, requiredRole = 'viewer') {
   const roleOrder = { viewer: 0, writer: 1, editor: 2, admin: 3, owner: 4 };
 
-  const access = db.prepare(`
+  const [rows] = await db.execute(`
     SELECT
       CASE WHEN w.owner_id = ? THEN 'owner' ELSE wm.role END as role
     FROM categories c
     JOIN workspaces w ON c.workspace_id = w.id
     LEFT JOIN workspace_members wm ON w.id = wm.workspace_id AND wm.user_id = ?
     WHERE c.id = ? AND (w.owner_id = ? OR wm.user_id = ?)
-  `).get(userId, userId, categoryId, userId, userId);
+  `, [userId, userId, categoryId, userId, userId]);
 
-  if (!access) return null;
+  if (rows.length === 0) return null;
 
-  const hasAccess = roleOrder[access.role] >= roleOrder[requiredRole];
-  return hasAccess ? access.role : null;
+  const hasAccess = roleOrder[rows[0].role] >= roleOrder[requiredRole];
+  return hasAccess ? rows[0].role : null;
 }
 
 /**
  * GET /api/documents - 문서 목록 (카테고리별)
  */
-router.get('/', authenticate, (req, res, next) => {
+router.get('/', authenticate, async (req, res, next) => {
   try {
     const { categoryId } = req.query;
 
@@ -91,19 +91,19 @@ router.get('/', authenticate, (req, res, next) => {
       return res.status(400).json({ error: 'categoryId가 필요합니다.' });
     }
 
-    const role = checkCategoryAccess(req.user.id, categoryId);
+    const role = await checkCategoryAccess(req.user.id, categoryId);
     if (!role) {
       return res.status(403).json({ error: '접근 권한이 없습니다.' });
     }
 
-    const documents = db.prepare(`
+    const [documents] = await db.execute(`
       SELECT d.*, u.name as author_name,
         (SELECT COUNT(*) FROM blocks WHERE document_id = d.id) as block_count
       FROM documents d
       LEFT JOIN users u ON d.created_by = u.id
       WHERE d.category_id = ?
       ORDER BY d.id ASC
-    `).all(categoryId);
+    `, [categoryId]);
 
     res.json({ documents: documents.map(d => ({...formatDocument(d), blockCount: d.block_count})) });
   } catch (error) {
@@ -114,36 +114,36 @@ router.get('/', authenticate, (req, res, next) => {
 /**
  * GET /api/documents/:id - 문서 상세 (블록 포함)
  */
-router.get('/:id', authenticate, (req, res, next) => {
+router.get('/:id', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const role = checkDocumentAccess(req.user.id, id);
+    const role = await checkDocumentAccess(req.user.id, id);
     if (!role) {
       return res.status(403).json({ error: '접근 권한이 없습니다.' });
     }
 
-    const document = db.prepare(`
+    const [documentRows] = await db.execute(`
       SELECT d.*, u.name as author_name
       FROM documents d
       LEFT JOIN users u ON d.created_by = u.id
       WHERE d.id = ?
-    `).get(id);
+    `, [id]);
 
-    if (!document) {
+    if (documentRows.length === 0) {
       return res.status(404).json({ error: '문서를 찾을 수 없습니다.' });
     }
 
     // 블록 목록
-    const blocks = db.prepare(`
+    const [blocks] = await db.execute(`
       SELECT * FROM blocks
       WHERE document_id = ?
       ORDER BY sort_order ASC
-    `).all(id);
+    `, [id]);
 
     res.json({
       document: {
-        ...formatDocument(document),
+        ...formatDocument(documentRows[0]),
         blocks: blocks.map(formatBlock),
       },
     });
@@ -155,7 +155,7 @@ router.get('/:id', authenticate, (req, res, next) => {
 /**
  * POST /api/documents - 문서 생성
  */
-router.post('/', authenticate, (req, res, next) => {
+router.post('/', authenticate, async (req, res, next) => {
   try {
     const { categoryId, title, status = 'draft' } = req.body;
 
@@ -163,36 +163,36 @@ router.post('/', authenticate, (req, res, next) => {
       return res.status(400).json({ error: 'categoryId와 title은 필수입니다.' });
     }
 
-    const role = checkCategoryAccess(req.user.id, categoryId, 'writer');
+    const role = await checkCategoryAccess(req.user.id, categoryId, 'writer');
     if (!role) {
       return res.status(403).json({ error: '문서 생성 권한이 없습니다.' });
     }
 
-    const result = db.prepare(`
+    const [result] = await db.execute(`
       INSERT INTO documents (category_id, title, status, created_by)
       VALUES (?, ?, ?, ?)
-    `).run(categoryId, title, status, req.user.id);
+    `, [categoryId, title, status, req.user.id]);
 
-    const documentId = result.lastInsertRowid;
+    const documentId = result.insertId;
 
     // 기본 텍스트 블록 추가
-    db.prepare(`
+    await db.execute(`
       INSERT INTO blocks (document_id, block_type, content, sort_order)
       VALUES (?, 'text', '', 1)
-    `).run(documentId);
+    `, [documentId]);
 
-    const document = db.prepare(`
+    const [documentRows] = await db.execute(`
       SELECT d.*, u.name as author_name
       FROM documents d
       LEFT JOIN users u ON d.created_by = u.id
       WHERE d.id = ?
-    `).get(documentId);
+    `, [documentId]);
 
-    const blocks = db.prepare('SELECT * FROM blocks WHERE document_id = ?').all(documentId);
+    const [blocks] = await db.execute('SELECT * FROM blocks WHERE document_id = ?', [documentId]);
 
     res.status(201).json({
       document: {
-        ...formatDocument(document),
+        ...formatDocument(documentRows[0]),
         blocks: blocks.map(formatBlock),
       },
     });
@@ -204,32 +204,32 @@ router.post('/', authenticate, (req, res, next) => {
 /**
  * PUT /api/documents/:id - 문서 수정 (메타데이터)
  */
-router.put('/:id', authenticate, (req, res, next) => {
+router.put('/:id', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
     const { title, status } = req.body;
 
-    const role = checkDocumentAccess(req.user.id, id, 'writer');
+    const role = await checkDocumentAccess(req.user.id, id, 'writer');
     if (!role) {
       return res.status(403).json({ error: '수정 권한이 없습니다.' });
     }
 
-    db.prepare(`
+    await db.execute(`
       UPDATE documents
       SET title = COALESCE(?, title),
           status = COALESCE(?, status),
-          updated_at = datetime('now')
+          updated_at = NOW()
       WHERE id = ?
-    `).run(title, status, id);
+    `, [title, status, id]);
 
-    const document = db.prepare(`
+    const [documentRows] = await db.execute(`
       SELECT d.*, u.name as author_name
       FROM documents d
       LEFT JOIN users u ON d.created_by = u.id
       WHERE d.id = ?
-    `).get(id);
+    `, [id]);
 
-    res.json({ document: formatDocument(document) });
+    res.json({ document: formatDocument(documentRows[0]) });
   } catch (error) {
     next(error);
   }
@@ -238,103 +238,108 @@ router.put('/:id', authenticate, (req, res, next) => {
 /**
  * PUT /api/documents/:id/blocks - 문서 블록 전체 저장
  */
-router.put('/:id/blocks', authenticate, (req, res, next) => {
+router.put('/:id/blocks', authenticate, async (req, res, next) => {
+  const connection = await db.getConnection();
+
   try {
     const { id } = req.params;
     const { blocks, createVersion = false } = req.body;
 
-    const role = checkDocumentAccess(req.user.id, id, 'writer');
+    const role = await checkDocumentAccess(req.user.id, id, 'writer');
     if (!role) {
+      connection.release();
       return res.status(403).json({ error: '수정 권한이 없습니다.' });
     }
 
     // 현재 문서 정보
-    const document = db.prepare('SELECT * FROM documents WHERE id = ?').get(id);
-    if (!document) {
+    const [documentRows] = await connection.execute('SELECT * FROM documents WHERE id = ?', [id]);
+    if (documentRows.length === 0) {
+      connection.release();
       return res.status(404).json({ error: '문서를 찾을 수 없습니다.' });
     }
 
-    const saveBlocks = db.transaction(() => {
+    await connection.beginTransaction();
+
+    try {
       // 버전 생성 (옵션)
       if (createVersion) {
-        const currentBlocks = db.prepare('SELECT * FROM blocks WHERE document_id = ?').all(id);
-        const versionNumber = db.prepare(`
-          SELECT COALESCE(MAX(version_number), 0) + 1 as next FROM document_versions WHERE document_id = ?
-        `).get(id).next;
+        const [currentBlocks] = await connection.execute('SELECT * FROM blocks WHERE document_id = ?', [id]);
+        const [versionRows] = await connection.execute(
+          'SELECT COALESCE(MAX(version_number), 0) + 1 as next FROM document_versions WHERE document_id = ?',
+          [id]
+        );
+        const versionNumber = versionRows[0].next;
 
-        db.prepare(`
-          INSERT INTO document_versions (document_id, version_number, snapshot, created_by)
-          VALUES (?, ?, ?, ?)
-        `).run(id, versionNumber, JSON.stringify(currentBlocks), req.user.id);
+        await connection.execute(
+          'INSERT INTO document_versions (document_id, version_number, snapshot, created_by) VALUES (?, ?, ?, ?)',
+          [id, versionNumber, JSON.stringify(currentBlocks), req.user.id]
+        );
       }
 
       // 기존 블록 삭제
-      db.prepare('DELETE FROM blocks WHERE document_id = ?').run(id);
+      await connection.execute('DELETE FROM blocks WHERE document_id = ?', [id]);
 
       // 새 블록 삽입
-      const insertBlock = db.prepare(`
-        INSERT INTO blocks (document_id, block_type, content, file_url, file_name, file_size, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      blocks.forEach((block, index) => {
-        insertBlock.run(
-          id,
-          block.blockType,
-          block.content || '',
-          block.fileUrl || null,
-          block.fileName || null,
-          block.fileSize || null,
-          index + 1
+      for (let index = 0; index < blocks.length; index++) {
+        const block = blocks[index];
+        await connection.execute(
+          `INSERT INTO blocks (document_id, block_type, content, file_url, file_name, file_size, sort_order)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [id, block.blockType, block.content || '', block.fileUrl || null, block.fileName || null, block.fileSize || null, index + 1]
         );
-      });
+      }
 
       // 문서 업데이트 시간 갱신
-      db.prepare('UPDATE documents SET updated_at = datetime("now") WHERE id = ?').run(id);
-    });
+      await connection.execute('UPDATE documents SET updated_at = NOW() WHERE id = ?', [id]);
 
-    saveBlocks();
+      await connection.commit();
 
-    // 업데이트된 문서 반환
-    const updatedDocument = db.prepare(`
-      SELECT d.*, u.name as author_name
-      FROM documents d
-      LEFT JOIN users u ON d.created_by = u.id
-      WHERE d.id = ?
-    `).get(id);
+      // 업데이트된 문서 반환
+      const [updatedDocRows] = await db.execute(`
+        SELECT d.*, u.name as author_name
+        FROM documents d
+        LEFT JOIN users u ON d.created_by = u.id
+        WHERE d.id = ?
+      `, [id]);
 
-    const updatedBlocks = db.prepare('SELECT * FROM blocks WHERE document_id = ? ORDER BY sort_order').all(id);
+      const [updatedBlocks] = await db.execute('SELECT * FROM blocks WHERE document_id = ? ORDER BY sort_order', [id]);
 
-    res.json({
-      document: {
-        ...formatDocument(updatedDocument),
-        blocks: updatedBlocks.map(formatBlock),
-      },
-    });
+      res.json({
+        document: {
+          ...formatDocument(updatedDocRows[0]),
+          blocks: updatedBlocks.map(formatBlock),
+        },
+      });
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    }
   } catch (error) {
     next(error);
+  } finally {
+    connection.release();
   }
 });
 
 /**
  * GET /api/documents/:id/versions - 문서 버전 목록
  */
-router.get('/:id/versions', authenticate, (req, res, next) => {
+router.get('/:id/versions', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const role = checkDocumentAccess(req.user.id, id);
+    const role = await checkDocumentAccess(req.user.id, id);
     if (!role) {
       return res.status(403).json({ error: '접근 권한이 없습니다.' });
     }
 
-    const versions = db.prepare(`
+    const [versions] = await db.execute(`
       SELECT dv.*, u.name as created_by_name
       FROM document_versions dv
       LEFT JOIN users u ON dv.created_by = u.id
       WHERE dv.document_id = ?
       ORDER BY dv.version_number DESC
-    `).all(id);
+    `, [id]);
 
     res.json({
       versions: versions.map(v => ({
@@ -355,26 +360,35 @@ router.get('/:id/versions', authenticate, (req, res, next) => {
 /**
  * DELETE /api/documents/:id - 문서 삭제
  */
-router.delete('/:id', authenticate, (req, res, next) => {
+router.delete('/:id', authenticate, async (req, res, next) => {
+  const connection = await db.getConnection();
+
   try {
     const { id } = req.params;
 
-    const role = checkDocumentAccess(req.user.id, id, 'editor');
+    const role = await checkDocumentAccess(req.user.id, id, 'editor');
     if (!role) {
+      connection.release();
       return res.status(403).json({ error: '삭제 권한이 없습니다.' });
     }
 
-    const deleteAll = db.transaction(() => {
-      db.prepare('DELETE FROM blocks WHERE document_id = ?').run(id);
-      db.prepare('DELETE FROM document_versions WHERE document_id = ?').run(id);
-      db.prepare('DELETE FROM documents WHERE id = ?').run(id);
-    });
+    await connection.beginTransaction();
 
-    deleteAll();
+    try {
+      await connection.execute('DELETE FROM blocks WHERE document_id = ?', [id]);
+      await connection.execute('DELETE FROM document_versions WHERE document_id = ?', [id]);
+      await connection.execute('DELETE FROM documents WHERE id = ?', [id]);
 
-    res.json({ message: '문서가 삭제되었습니다.' });
+      await connection.commit();
+      res.json({ message: '문서가 삭제되었습니다.' });
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    }
   } catch (error) {
     next(error);
+  } finally {
+    connection.release();
   }
 });
 

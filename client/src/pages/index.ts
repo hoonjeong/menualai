@@ -1,5 +1,7 @@
 export { Dashboard } from './Dashboard';
 export { Login } from './Login';
+export { Register } from './Register';
 export { Workspaces } from './Workspaces';
+export { WorkspaceNew } from './WorkspaceNew';
 export { WorkspaceDetail } from './WorkspaceDetail';
 export { DocumentEditor } from './DocumentEditor';

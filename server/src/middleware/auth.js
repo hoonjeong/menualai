@@ -20,7 +20,7 @@ function formatUser(user) {
 /**
  * JWT 토큰 검증 미들웨어
  */
-export function authenticate(req, res, next) {
+export async function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -33,17 +33,18 @@ export function authenticate(req, res, next) {
     const decoded = jwt.verify(token, JWT_SECRET);
 
     // 사용자 정보 조회
-    const user = db.prepare(`
-      SELECT id, email, name, profile_image, organization, created_at
-      FROM users
-      WHERE id = ?
-    `).get(decoded.userId);
+    const [rows] = await db.execute(
+      `SELECT id, email, name, profile_image, organization, created_at
+       FROM users
+       WHERE id = ?`,
+      [decoded.userId]
+    );
 
-    if (!user) {
+    if (rows.length === 0) {
       return res.status(401).json({ error: '사용자를 찾을 수 없습니다.' });
     }
 
-    req.user = formatUser(user);
+    req.user = formatUser(rows[0]);
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
@@ -56,7 +57,7 @@ export function authenticate(req, res, next) {
 /**
  * 선택적 인증 (토큰이 있으면 검증, 없어도 통과)
  */
-export function optionalAuth(req, res, next) {
+export async function optionalAuth(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -67,14 +68,15 @@ export function optionalAuth(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = db.prepare(`
-      SELECT id, email, name, profile_image, organization, created_at
-      FROM users
-      WHERE id = ?
-    `).get(decoded.userId);
+    const [rows] = await db.execute(
+      `SELECT id, email, name, profile_image, organization, created_at
+       FROM users
+       WHERE id = ?`,
+      [decoded.userId]
+    );
 
-    if (user) {
-      req.user = formatUser(user);
+    if (rows.length > 0) {
+      req.user = formatUser(rows[0]);
     }
   } catch (error) {
     // 토큰이 유효하지 않아도 통과

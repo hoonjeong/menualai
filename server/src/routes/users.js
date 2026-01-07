@@ -22,20 +22,20 @@ function formatUser(user) {
 /**
  * GET /api/users/:id - 사용자 정보 조회
  */
-router.get('/:id', authenticate, (req, res, next) => {
+router.get('/:id', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const user = db.prepare(`
+    const [users] = await db.execute(`
       SELECT id, email, name, profile_image, organization, created_at
       FROM users WHERE id = ?
-    `).get(id);
+    `, [id]);
 
-    if (!user) {
+    if (users.length === 0) {
       return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
     }
 
-    res.json({ user: formatUser(user) });
+    res.json({ user: formatUser(users[0]) });
   } catch (error) {
     next(error);
   }
@@ -55,21 +55,21 @@ router.put('/:id', authenticate, async (req, res, next) => {
 
     const { name, profileImage, organization } = req.body;
 
-    db.prepare(`
+    await db.execute(`
       UPDATE users
       SET name = COALESCE(?, name),
           profile_image = COALESCE(?, profile_image),
           organization = COALESCE(?, organization),
-          updated_at = datetime('now')
+          updated_at = NOW()
       WHERE id = ?
-    `).run(name, profileImage, organization, id);
+    `, [name, profileImage, organization, id]);
 
-    const user = db.prepare(`
+    const [users] = await db.execute(`
       SELECT id, email, name, profile_image, organization, created_at
       FROM users WHERE id = ?
-    `).get(id);
+    `, [id]);
 
-    res.json({ user: formatUser(user) });
+    res.json({ user: formatUser(users[0]) });
   } catch (error) {
     next(error);
   }
@@ -94,8 +94,8 @@ router.put('/:id/password', authenticate, async (req, res, next) => {
     }
 
     // 현재 비밀번호 확인
-    const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(id);
-    const isValid = await bcrypt.compare(currentPassword, user.password_hash);
+    const [users] = await db.execute('SELECT password_hash FROM users WHERE id = ?', [id]);
+    const isValid = await bcrypt.compare(currentPassword, users[0].password_hash);
 
     if (!isValid) {
       return res.status(400).json({ error: '현재 비밀번호가 올바르지 않습니다.' });
@@ -103,11 +103,10 @@ router.put('/:id/password', authenticate, async (req, res, next) => {
 
     // 새 비밀번호 해시 및 저장
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    db.prepare(`
-      UPDATE users
-      SET password_hash = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(hashedPassword, id);
+    await db.execute(
+      'UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?',
+      [hashedPassword, id]
+    );
 
     res.json({ message: '비밀번호가 변경되었습니다.' });
   } catch (error) {

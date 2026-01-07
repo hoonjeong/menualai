@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MainLayout } from './components/layout';
-import { Dashboard, Login, Workspaces, WorkspaceDetail, DocumentEditor } from './pages';
+import { Dashboard, Login, Register, Workspaces, WorkspaceNew, WorkspaceDetail, DocumentEditor } from './pages';
 import { useAuthStore, useUIStore } from './stores';
 
 // React Query 클라이언트
@@ -60,14 +60,12 @@ function ThemeInitializer({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  const { setLoading } = useAuthStore();
+  const { checkAuth } = useAuthStore();
 
   // 앱 초기화 시 인증 상태 확인
   useEffect(() => {
-    // 저장된 토큰이 있으면 사용자 정보 로드
-    // TODO: 실제 토큰 검증 API 호출
-    setLoading(false);
-  }, [setLoading]);
+    checkAuth();
+  }, [checkAuth]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -76,6 +74,7 @@ function App() {
           <Routes>
             {/* 공개 라우트 */}
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
 
             {/* 인증 필요 라우트 */}
             <Route
@@ -88,6 +87,7 @@ function App() {
             >
               <Route index element={<Dashboard />} />
               <Route path="workspaces" element={<Workspaces />} />
+              <Route path="workspace/new" element={<WorkspaceNew />} />
               <Route path="workspace/:id" element={<WorkspaceDetail />} />
               <Route path="documents" element={<div className="text-center py-12 text-gray-500">문서 목록 페이지 (준비 중)</div>} />
               <Route path="document/:id" element={<DocumentEditor />} />

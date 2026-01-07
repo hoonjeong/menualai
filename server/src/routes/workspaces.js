@@ -25,10 +25,10 @@ function formatWorkspace(ws) {
 /**
  * GET /api/workspaces - 내 워크스페이스 목록
  */
-router.get('/', authenticate, (req, res, next) => {
+router.get('/', authenticate, async (req, res, next) => {
   try {
     // 소유한 워크스페이스 + 멤버로 참여한 워크스페이스
-    const workspaces = db.prepare(`
+    const [workspaces] = await db.execute(`
       SELECT DISTINCT w.*,
         CASE WHEN w.owner_id = ? THEN 'owner' ELSE wm.role END as myRole,
         (SELECT COUNT(*) FROM categories WHERE workspace_id = w.id) as category_count,
@@ -37,7 +37,7 @@ router.get('/', authenticate, (req, res, next) => {
       LEFT JOIN workspace_members wm ON w.id = wm.workspace_id AND wm.user_id = ?
       WHERE w.owner_id = ? OR wm.user_id = ?
       ORDER BY w.updated_at DESC
-    `).all(req.user.id, req.user.id, req.user.id, req.user.id);
+    `, [req.user.id, req.user.id, req.user.id, req.user.id]);
 
     res.json({ workspaces: workspaces.map(formatWorkspace) });
   } catch (error) {
@@ -48,33 +48,35 @@ router.get('/', authenticate, (req, res, next) => {
 /**
  * GET /api/workspaces/:id - 워크스페이스 상세
  */
-router.get('/:id', authenticate, (req, res, next) => {
+router.get('/:id', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const workspace = db.prepare(`
+    const [workspaceRows] = await db.execute(`
       SELECT w.*,
         CASE WHEN w.owner_id = ? THEN 'owner' ELSE wm.role END as myRole
       FROM workspaces w
       LEFT JOIN workspace_members wm ON w.id = wm.workspace_id AND wm.user_id = ?
       WHERE w.id = ? AND (w.owner_id = ? OR wm.user_id = ?)
-    `).get(req.user.id, req.user.id, id, req.user.id, req.user.id);
+    `, [req.user.id, req.user.id, id, req.user.id, req.user.id]);
 
-    if (!workspace) {
+    if (workspaceRows.length === 0) {
       return res.status(404).json({ error: '워크스페이스를 찾을 수 없습니다.' });
     }
 
+    const workspace = workspaceRows[0];
+
     // 카테고리 목록
-    const categories = db.prepare(`
+    const [categories] = await db.execute(`
       SELECT c.*,
         (SELECT COUNT(*) FROM documents WHERE category_id = c.id) as document_count
       FROM categories c
       WHERE c.workspace_id = ?
       ORDER BY c.sort_order ASC
-    `).all(id);
+    `, [id]);
 
     // 멤버 목록
-    const members = db.prepare(`
+    const [members] = await db.execute(`
       SELECT u.id, u.email, u.name, u.profile_image, wm.role, wm.joined_at
       FROM workspace_members wm
       JOIN users u ON wm.user_id = u.id
@@ -84,7 +86,7 @@ router.get('/:id', authenticate, (req, res, next) => {
       FROM workspaces w
       JOIN users u ON w.owner_id = u.id
       WHERE w.id = ?
-    `).all(id, id);
+    `, [id, id]);
 
     const formattedCategories = categories.map(c => ({
       id: c.id,
@@ -121,7 +123,7 @@ router.get('/:id', authenticate, (req, res, next) => {
 /**
  * POST /api/workspaces - 워크스페이스 생성
  */
-router.post('/', authenticate, (req, res, next) => {
+router.post('/', authenticate, async (req, res, next) => {
   try {
     const { name, description, icon } = req.body;
 
@@ -129,15 +131,14 @@ router.post('/', authenticate, (req, res, next) => {
       return res.status(400).json({ error: '워크스페이스 이름은 필수입니다.' });
     }
 
-    const result = db.prepare(`
+    const [result] = await db.execute(`
       INSERT INTO workspaces (name, description, icon, owner_id)
       VALUES (?, ?, ?, ?)
-    `).run(name, description || '', icon || '📁', req.user.id);
+    `, [name, description || '', icon || '📁', req.user.id]);
 
-    const workspace = db.prepare('SELECT * FROM workspaces WHERE id = ?')
-      .get(result.lastInsertRowid);
+    const [workspaceRows] = await db.execute('SELECT * FROM workspaces WHERE id = ?', [result.insertId]);
 
-    res.status(201).json({ workspace: formatWorkspace(workspace) });
+    res.status(201).json({ workspace: formatWorkspace(workspaceRows[0]) });
   } catch (error) {
     next(error);
   }
@@ -146,38 +147,40 @@ router.post('/', authenticate, (req, res, next) => {
 /**
  * PUT /api/workspaces/:id - 워크스페이스 수정
  */
-router.put('/:id', authenticate, (req, res, next) => {
+router.put('/:id', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
     const { name, description, icon } = req.body;
 
     // 권한 확인 (소유자 또는 admin만)
-    const workspace = db.prepare(`
+    const [workspaceRows] = await db.execute(`
       SELECT w.owner_id, wm.role
       FROM workspaces w
       LEFT JOIN workspace_members wm ON w.id = wm.workspace_id AND wm.user_id = ?
       WHERE w.id = ?
-    `).get(req.user.id, id);
+    `, [req.user.id, id]);
 
-    if (!workspace) {
+    if (workspaceRows.length === 0) {
       return res.status(404).json({ error: '워크스페이스를 찾을 수 없습니다.' });
     }
+
+    const workspace = workspaceRows[0];
 
     if (workspace.owner_id !== req.user.id && workspace.role !== 'admin') {
       return res.status(403).json({ error: '수정 권한이 없습니다.' });
     }
 
-    db.prepare(`
+    await db.execute(`
       UPDATE workspaces
       SET name = COALESCE(?, name),
           description = COALESCE(?, description),
           icon = COALESCE(?, icon),
-          updated_at = datetime('now')
+          updated_at = NOW()
       WHERE id = ?
-    `).run(name, description, icon, id);
+    `, [name, description, icon, id]);
 
-    const updated = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(id);
-    res.json({ workspace: formatWorkspace(updated) });
+    const [updated] = await db.execute('SELECT * FROM workspaces WHERE id = ?', [id]);
+    res.json({ workspace: formatWorkspace(updated[0]) });
   } catch (error) {
     next(error);
   }
@@ -186,105 +189,120 @@ router.put('/:id', authenticate, (req, res, next) => {
 /**
  * DELETE /api/workspaces/:id - 워크스페이스 삭제
  */
-router.delete('/:id', authenticate, (req, res, next) => {
+router.delete('/:id', authenticate, async (req, res, next) => {
+  const connection = await db.getConnection();
+
   try {
     const { id } = req.params;
 
     // 소유자만 삭제 가능
-    const workspace = db.prepare('SELECT owner_id FROM workspaces WHERE id = ?').get(id);
+    const [workspaceRows] = await connection.execute('SELECT owner_id FROM workspaces WHERE id = ?', [id]);
 
-    if (!workspace) {
+    if (workspaceRows.length === 0) {
+      connection.release();
       return res.status(404).json({ error: '워크스페이스를 찾을 수 없습니다.' });
     }
 
-    if (workspace.owner_id !== req.user.id) {
+    if (workspaceRows[0].owner_id !== req.user.id) {
+      connection.release();
       return res.status(403).json({ error: '소유자만 삭제할 수 있습니다.' });
     }
 
     // 트랜잭션으로 관련 데이터 모두 삭제
-    const deleteAll = db.transaction(() => {
+    await connection.beginTransaction();
+
+    try {
       // 블록 삭제
-      db.prepare(`
+      await connection.execute(`
         DELETE FROM blocks WHERE document_id IN (
           SELECT id FROM documents WHERE category_id IN (
             SELECT id FROM categories WHERE workspace_id = ?
           )
         )
-      `).run(id);
+      `, [id]);
 
       // 문서 버전 삭제
-      db.prepare(`
+      await connection.execute(`
         DELETE FROM document_versions WHERE document_id IN (
           SELECT id FROM documents WHERE category_id IN (
             SELECT id FROM categories WHERE workspace_id = ?
           )
         )
-      `).run(id);
+      `, [id]);
 
       // 문서 삭제
-      db.prepare(`
+      await connection.execute(`
         DELETE FROM documents WHERE category_id IN (
           SELECT id FROM categories WHERE workspace_id = ?
         )
-      `).run(id);
+      `, [id]);
 
       // 카테고리 삭제
-      db.prepare('DELETE FROM categories WHERE workspace_id = ?').run(id);
+      await connection.execute('DELETE FROM categories WHERE workspace_id = ?', [id]);
 
       // 멤버 삭제
-      db.prepare('DELETE FROM workspace_members WHERE workspace_id = ?').run(id);
+      await connection.execute('DELETE FROM workspace_members WHERE workspace_id = ?', [id]);
 
       // 초대 삭제
-      db.prepare('DELETE FROM invitations WHERE workspace_id = ?').run(id);
+      await connection.execute('DELETE FROM invitations WHERE workspace_id = ?', [id]);
 
       // 워크스페이스 삭제
-      db.prepare('DELETE FROM workspaces WHERE id = ?').run(id);
-    });
+      await connection.execute('DELETE FROM workspaces WHERE id = ?', [id]);
 
-    deleteAll();
-
-    res.json({ message: '워크스페이스가 삭제되었습니다.' });
+      await connection.commit();
+      res.json({ message: '워크스페이스가 삭제되었습니다.' });
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    }
   } catch (error) {
     next(error);
+  } finally {
+    connection.release();
   }
 });
 
 /**
  * POST /api/workspaces/:id/members - 멤버 추가 (초대)
  */
-router.post('/:id/members', authenticate, (req, res, next) => {
+router.post('/:id/members', authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
     const { email, role = 'viewer' } = req.body;
 
     // 권한 확인
-    const workspace = db.prepare(`
+    const [workspaceRows] = await db.execute(`
       SELECT w.owner_id, wm.role
       FROM workspaces w
       LEFT JOIN workspace_members wm ON w.id = wm.workspace_id AND wm.user_id = ?
       WHERE w.id = ?
-    `).get(req.user.id, id);
+    `, [req.user.id, id]);
 
-    if (!workspace) {
+    if (workspaceRows.length === 0) {
       return res.status(404).json({ error: '워크스페이스를 찾을 수 없습니다.' });
     }
+
+    const workspace = workspaceRows[0];
 
     if (workspace.owner_id !== req.user.id && workspace.role !== 'admin') {
       return res.status(403).json({ error: '멤버를 추가할 권한이 없습니다.' });
     }
 
     // 사용자 찾기
-    const user = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
-    if (!user) {
+    const [userRows] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
+    if (userRows.length === 0) {
       return res.status(404).json({ error: '해당 이메일의 사용자를 찾을 수 없습니다.' });
     }
 
-    // 이미 멤버인지 확인
-    const existing = db.prepare(`
-      SELECT 1 FROM workspace_members WHERE workspace_id = ? AND user_id = ?
-    `).get(id, user.id);
+    const user = userRows[0];
 
-    if (existing) {
+    // 이미 멤버인지 확인
+    const [existingRows] = await db.execute(
+      'SELECT 1 FROM workspace_members WHERE workspace_id = ? AND user_id = ?',
+      [id, user.id]
+    );
+
+    if (existingRows.length > 0) {
       return res.status(400).json({ error: '이미 워크스페이스 멤버입니다.' });
     }
 
@@ -294,10 +312,10 @@ router.post('/:id/members', authenticate, (req, res, next) => {
     }
 
     // 멤버 추가
-    db.prepare(`
-      INSERT INTO workspace_members (workspace_id, user_id, role)
-      VALUES (?, ?, ?)
-    `).run(id, user.id, role);
+    await db.execute(
+      'INSERT INTO workspace_members (workspace_id, user_id, role) VALUES (?, ?, ?)',
+      [id, user.id, role]
+    );
 
     res.status(201).json({ message: '멤버가 추가되었습니다.' });
   } catch (error) {
@@ -308,21 +326,23 @@ router.post('/:id/members', authenticate, (req, res, next) => {
 /**
  * DELETE /api/workspaces/:id/members/:userId - 멤버 제거
  */
-router.delete('/:id/members/:userId', authenticate, (req, res, next) => {
+router.delete('/:id/members/:userId', authenticate, async (req, res, next) => {
   try {
     const { id, userId } = req.params;
 
     // 권한 확인
-    const workspace = db.prepare(`
+    const [workspaceRows] = await db.execute(`
       SELECT w.owner_id, wm.role
       FROM workspaces w
       LEFT JOIN workspace_members wm ON w.id = wm.workspace_id AND wm.user_id = ?
       WHERE w.id = ?
-    `).get(req.user.id, id);
+    `, [req.user.id, id]);
 
-    if (!workspace) {
+    if (workspaceRows.length === 0) {
       return res.status(404).json({ error: '워크스페이스를 찾을 수 없습니다.' });
     }
+
+    const workspace = workspaceRows[0];
 
     // 소유자 또는 admin만 가능, 또는 본인 탈퇴
     const isOwnerOrAdmin = workspace.owner_id === req.user.id || workspace.role === 'admin';
@@ -332,8 +352,10 @@ router.delete('/:id/members/:userId', authenticate, (req, res, next) => {
       return res.status(403).json({ error: '멤버를 제거할 권한이 없습니다.' });
     }
 
-    db.prepare('DELETE FROM workspace_members WHERE workspace_id = ? AND user_id = ?')
-      .run(id, userId);
+    await db.execute(
+      'DELETE FROM workspace_members WHERE workspace_id = ? AND user_id = ?',
+      [id, userId]
+    );
 
     res.json({ message: '멤버가 제거되었습니다.' });
   } catch (error) {

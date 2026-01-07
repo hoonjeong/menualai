@@ -1,15 +1,28 @@
-import Database from 'better-sqlite3';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import mysql from 'mysql2/promise';
+import dotenv from 'dotenv';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+dotenv.config();
 
-// 데이터베이스 연결
-const dbPath = join(__dirname, '../../database/manualic.db');
-const db = new Database(dbPath);
+// MariaDB 연결 풀 생성
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || 'localhost',
+  port: process.env.DB_PORT || 3306,
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'manualic',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+});
 
-// WAL 모드 활성화 (성능 향상)
-db.pragma('journal_mode = WAL');
+// 연결 테스트
+pool.getConnection()
+  .then(conn => {
+    console.log('✅ MariaDB 연결 성공');
+    conn.release();
+  })
+  .catch(err => {
+    console.error('❌ MariaDB 연결 실패:', err.message);
+  });
 
-export default db;
+export default pool;

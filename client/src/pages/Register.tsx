@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores';
 
-export function Login() {
+export function Register() {
   const navigate = useNavigate();
-  const { login, error: authError, clearError } = useAuthStore();
+  const { register, error: authError, clearError } = useAuthStore();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -14,13 +16,24 @@ export function Login() {
     e.preventDefault();
     setError('');
     clearError();
+
+    if (password !== confirmPassword) {
+      setError('비밀번호가 일치하지 않습니다.');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('비밀번호는 최소 6자 이상이어야 합니다.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      await login(email, password);
+      await register(email, password, name);
       navigate('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : '로그인 중 오류가 발생했습니다.');
+      setError(err instanceof Error ? err.message : '회원가입 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
     }
@@ -37,9 +50,9 @@ export function Login() {
           </p>
         </div>
 
-        {/* 로그인 카드 */}
+        {/* 회원가입 카드 */}
         <div className="card p-8">
-          <h2 className="text-2xl font-semibold text-center mb-6">로그인</h2>
+          <h2 className="text-2xl font-semibold text-center mb-6">회원가입</h2>
 
           {error && (
             <div className="mb-4 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-sm">
@@ -48,6 +61,21 @@ export function Login() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium mb-2">
+                이름
+              </label>
+              <input
+                id="name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="input"
+                placeholder="홍길동"
+                required
+              />
+            </div>
+
             <div>
               <label htmlFor="email" className="block text-sm font-medium mb-2">
                 이메일
@@ -73,27 +101,24 @@ export function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="input"
-                placeholder="••••••••"
+                placeholder="최소 6자 이상"
                 required
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                />
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  로그인 유지
-                </span>
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-medium mb-2">
+                비밀번호 확인
               </label>
-              <Link
-                to="/forgot-password"
-                className="text-sm text-primary-600 hover:text-primary-700"
-              >
-                비밀번호 찾기
-              </Link>
+              <input
+                id="confirmPassword"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="input"
+                placeholder="비밀번호를 다시 입력하세요"
+                required
+              />
             </div>
 
             <button
@@ -101,25 +126,19 @@ export function Login() {
               className="btn-primary w-full py-3"
               disabled={isLoading}
             >
-              {isLoading ? '로그인 중...' : '로그인'}
+              {isLoading ? '가입 중...' : '회원가입'}
             </button>
           </form>
 
           <div className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
-            계정이 없으신가요?{' '}
+            이미 계정이 있으신가요?{' '}
             <Link
-              to="/register"
+              to="/login"
               className="text-primary-600 hover:text-primary-700 font-medium"
             >
-              회원가입
+              로그인
             </Link>
           </div>
-        </div>
-
-        {/* 테스트 계정 안내 */}
-        <div className="mt-4 p-4 rounded-lg bg-gray-100 dark:bg-gray-800 text-sm text-center">
-          <p className="text-gray-600 dark:text-gray-400">테스트 계정</p>
-          <p className="font-mono mt-1">admin@manualic.com / admin123</p>
         </div>
       </div>
     </div>

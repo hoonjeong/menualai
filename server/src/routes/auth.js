@@ -33,8 +33,8 @@ router.post('/register', async (req, res, next) => {
     }
 
     // 이메일 중복 확인
-    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
-    if (existingUser) {
+    const [existingUsers] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
+    if (existingUsers.length > 0) {
       return res.status(400).json({ error: '이미 사용 중인 이메일입니다.' });
     }
 
@@ -42,23 +42,23 @@ router.post('/register', async (req, res, next) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // 사용자 생성
-    const result = db.prepare(`
-      INSERT INTO users (email, password_hash, name)
-      VALUES (?, ?, ?)
-    `).run(email, hashedPassword, name);
+    const [result] = await db.execute(
+      'INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)',
+      [email, hashedPassword, name]
+    );
 
-    const userId = result.lastInsertRowid;
+    const userId = result.insertId;
 
     // JWT 토큰 생성
     const token = jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
 
     // 사용자 정보 조회
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    const [users] = await db.execute('SELECT * FROM users WHERE id = ?', [userId]);
 
     res.status(201).json({
       message: '회원가입이 완료되었습니다.',
       token,
-      user: formatUser(user),
+      user: formatUser(users[0]),
     });
   } catch (error) {
     next(error);
@@ -77,10 +77,12 @@ router.post('/login', async (req, res, next) => {
     }
 
     // 사용자 조회
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (!user) {
+    const [users] = await db.execute('SELECT * FROM users WHERE email = ?', [email]);
+    if (users.length === 0) {
       return res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.' });
     }
+
+    const user = users[0];
 
     // 비밀번호 검증
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
@@ -92,7 +94,7 @@ router.post('/login', async (req, res, next) => {
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
 
     // 마지막 로그인 시간 업데이트
-    db.prepare("UPDATE users SET last_login_at = datetime('now') WHERE id = ?").run(user.id);
+    await db.execute('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
 
     res.json({
       message: '로그인 성공',

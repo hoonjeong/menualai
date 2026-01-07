@@ -1,5 +1,6 @@
-import { Moon, Sun, Bell, MessageSquare } from 'lucide-react';
-import { useUIStore } from '../../stores';
+import { Moon, Sun, Bell, MessageSquare, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useUIStore, useAuthStore } from '../../stores';
 import clsx from 'clsx';
 
 interface HeaderProps {
@@ -7,7 +8,14 @@ interface HeaderProps {
 }
 
 export function Header({ title }: HeaderProps) {
+  const navigate = useNavigate();
   const { theme, setTheme, aiPanelOpen, toggleAIPanel, sidebarOpen } = useUIStore();
+  const { user, logout } = useAuthStore();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
@@ -65,6 +73,25 @@ export function Header({ title }: HeaderProps) {
           ) : (
             <Moon className="w-5 h-5" />
           )}
+        </button>
+
+        {/* 구분선 */}
+        <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-2" />
+
+        {/* 사용자 정보 */}
+        {user && (
+          <span className="text-sm text-gray-600 dark:text-gray-400">
+            {user.name}
+          </span>
+        )}
+
+        {/* 로그아웃 */}
+        <button
+          onClick={handleLogout}
+          className="p-2 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+          title="로그아웃"
+        >
+          <LogOut className="w-5 h-5" />
         </button>
       </div>
     </header>
