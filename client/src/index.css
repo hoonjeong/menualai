@@ -1,0 +1,170 @@
+@import "tailwindcss";
+
+/* Pretendard 폰트 */
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+
+/* 커스텀 테마 설정 */
+@theme {
+  --color-primary-50: #f0f9ff;
+  --color-primary-100: #e0f2fe;
+  --color-primary-200: #bae6fd;
+  --color-primary-300: #7dd3fc;
+  --color-primary-400: #38bdf8;
+  --color-primary-500: #0ea5e9;
+  --color-primary-600: #0284c7;
+  --color-primary-700: #0369a1;
+  --color-primary-800: #075985;
+  --color-primary-900: #0c4a6e;
+  --color-primary-950: #082f49;
+
+  --font-family-sans: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+/* 기본 스타일 */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100;
+  @apply font-sans antialiased;
+  @apply min-h-screen;
+}
+
+/* 스크롤바 커스터마이징 */
+::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100 dark:bg-gray-800;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-gray-600;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400 dark:bg-gray-500;
+}
+
+/* 컴포넌트 스타일 */
+/* 버튼 기본 스타일 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-primary-500);
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+  background-color: var(--color-primary-600);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-700);
+}
+
+.btn-primary:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-primary-500);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+  @apply bg-gray-200 text-gray-900 hover:bg-gray-300;
+  @apply dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600;
+}
+
+.btn-secondary:focus {
+  outline: none;
+  @apply ring-2 ring-gray-500;
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+  background-color: transparent;
+  @apply hover:bg-gray-100 dark:hover:bg-gray-800;
+}
+
+/* 카드 스타일 */
+.card {
+  @apply bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700;
+}
+
+/* 입력 필드 스타일 */
+.input {
+  @apply w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600;
+  @apply bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100;
+  @apply placeholder-gray-400 dark:placeholder-gray-500;
+}
+
+.input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-primary-500);
+  border-color: transparent;
+}
+
+/* 사이드바 스타일 */
+.sidebar {
+  @apply h-screen bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700;
+}
+
+/* 에디터 블록 스타일 */
+.block-text {
+  @apply p-4 rounded-lg transition-colors;
+  @apply hover:bg-gray-50 dark:hover:bg-gray-800/50;
+}
+
+.block-image {
+  @apply p-2 rounded-lg border border-gray-200 dark:border-gray-700;
+}
+
+.block-file {
+  @apply p-3 rounded-lg flex items-center gap-3;
+  @apply bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700;
+}
+
+/* 유틸리티 */
+/* 텍스트 선택 색상 */
+.selection-primary ::selection {
+  @apply bg-primary-200 dark:bg-primary-800;
+}
+
+/* 트랜지션 */
+.transition-sidebar {
+  transition: all 0.3s ease-in-out;
+}

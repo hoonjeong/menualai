@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(npm install)",
+      "Bash(npm run init:*)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(npm run build:*)",
+      "Bash(dir:*)",
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell -Command \"Stop-Process -Id 15740 -Force\")",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjQsImlhdCI6MTc2Nzc3NjA5NywiZXhwIjoxNzY4MzgwODk3fQ.38Jrb_8kyKw3RsbuOh6hjlhALdUyB5YKjRuTWYgSUlQ\")",
+      "Bash(cat:*)",
+      "Bash(node -e:*)",
+      "Bash(git init:*)",
+      "Bash(git config:*)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nInitial commit: Manualic - 비즈니스 매뉴얼 통합 관리 플랫폼\n\nFeatures:\n- React + Vite + TypeScript 프론트엔드\n- Express + Node.js 백엔드 API 서버\n- SQLite 데이터베이스\n- JWT 인증 시스템\n- Zustand 상태 관리\n- Tailwind CSS 스타일링\n- 블록 기반 에디터 (텍스트, 이미지, 파일)\n- Gemini AI 챗봇 연동\n- 워크스페이스/카테고리/문서 관리\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")"
+    ]
+  }
+}

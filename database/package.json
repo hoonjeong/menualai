@@ -1,0 +1,12 @@
+{
+  "name": "manualic-database",
+  "version": "1.0.0",
+  "description": "Manualic Database Setup",
+  "scripts": {
+    "init": "node init.js",
+    "reset": "node init.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3"
+  }
+}
