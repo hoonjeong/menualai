@@ -1,14 +1,19 @@
 # Dependencies
 node_modules/
 
-# Environment variables
+# Environment variables (보안 중요!)
 .env
 .env.local
 .env.*.local
+client/.env
+server/.env
 
 # Database
 database/*.db
 database/*.db-journal
+database/*.db-shm
+database/*.db-wal
+server/*.sqlite
 
 # Build output
 dist/
@@ -28,3 +33,7 @@ npm-debug.log*
 
 # Test coverage
 coverage/
+
+# Uploads (keep .gitkeep)
+server/uploads/*
+!server/uploads/.gitkeep
