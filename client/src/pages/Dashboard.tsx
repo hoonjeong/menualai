@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   FolderOpen,
@@ -10,6 +10,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useWorkspaceStore, useAuthStore } from '../stores';
+import { favoriteApi, type Favorite } from '../api/client';
 
 // 상대적인 시간 표시 함수
 function formatRelativeTime(dateString: string): string {
@@ -37,17 +38,33 @@ export function Dashboard() {
     fetchRecentDocuments,
   } = useWorkspaceStore();
 
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
+  const [favoritesLoading, setFavoritesLoading] = useState(true);
+
   useEffect(() => {
     fetchWorkspaces().then(() => {
       fetchRecentDocuments();
     });
+
+    // 즐겨찾기 로드
+    favoriteApi
+      .list()
+      .then((response) => {
+        setFavorites(response.favorites);
+      })
+      .catch((err) => {
+        console.error('Failed to load favorites:', err);
+      })
+      .finally(() => {
+        setFavoritesLoading(false);
+      });
   }, [fetchWorkspaces, fetchRecentDocuments]);
 
   // 통계 데이터 (실제 데이터 기반)
   const stats = [
     { label: '사업', value: workspaces.length, icon: FolderOpen, color: 'text-blue-600' },
     { label: '문서', value: recentDocuments.length, icon: FileText, color: 'text-green-600' },
-    { label: '즐겨찾기', value: 0, icon: Star, color: 'text-yellow-600' },
+    { label: '즐겨찾기', value: favorites.length, icon: Star, color: 'text-yellow-600' },
   ];
 
   if (isLoading) {
@@ -145,11 +162,35 @@ export function Dashboard() {
             </div>
           </div>
           <div className="divide-y divide-gray-200 dark:divide-gray-700">
-            <div className="p-8 text-center text-gray-500">
-              <Star className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-              <p>즐겨찾기한 문서가 없습니다.</p>
-              <p className="text-sm mt-1">문서를 즐겨찾기에 추가해보세요.</p>
-            </div>
+            {favoritesLoading ? (
+              <div className="p-8 text-center">
+                <Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" />
+              </div>
+            ) : favorites.length > 0 ? (
+              favorites.slice(0, 5).map((fav) => (
+                <Link
+                  key={fav.id}
+                  to={`/document/${fav.documentId}/edit`}
+                  className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
+                    <div>
+                      <p className="font-medium">{fav.documentTitle}</p>
+                      <p className="text-sm text-gray-500">
+                        {fav.workspaceName} / {fav.categoryName}
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+              ))
+            ) : (
+              <div className="p-8 text-center text-gray-500">
+                <Star className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                <p>즐겨찾기한 문서가 없습니다.</p>
+                <p className="text-sm mt-1">문서를 즐겨찾기에 추가해보세요.</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

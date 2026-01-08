@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { AIPanel } from './AIPanel';
+import { SearchModal } from './SearchModal';
 import { useUIStore } from '../../stores';
 import clsx from 'clsx';
 
@@ -17,6 +18,7 @@ export function MainLayout({ title }: MainLayoutProps) {
       <Sidebar />
       <Header title={title} />
       <AIPanel />
+      <SearchModal />
 
       <main
         className={clsx(

@@ -17,6 +17,7 @@ function formatWorkspace(ws) {
     myRole: ws.myRole || ws.my_role,
     categoryCount: ws.category_count || ws.categoryCount,
     memberCount: ws.member_count || ws.memberCount,
+    documentCount: ws.document_count || ws.documentCount || 0,
     createdAt: ws.created_at,
     updatedAt: ws.updated_at,
   };
@@ -32,7 +33,8 @@ router.get('/', authenticate, async (req, res, next) => {
       SELECT DISTINCT w.*,
         CASE WHEN w.owner_id = ? THEN 'owner' ELSE wm.role END as myRole,
         (SELECT COUNT(*) FROM categories WHERE workspace_id = w.id) as category_count,
-        (SELECT COUNT(*) FROM workspace_members WHERE workspace_id = w.id) + 1 as member_count
+        (SELECT COUNT(*) FROM workspace_members WHERE workspace_id = w.id) + 1 as member_count,
+        (SELECT COUNT(*) FROM documents d JOIN categories c ON d.category_id = c.id WHERE c.workspace_id = w.id) as document_count
       FROM workspaces w
       LEFT JOIN workspace_members wm ON w.id = wm.workspace_id AND wm.user_id = ?
       WHERE w.owner_id = ? OR wm.user_id = ?

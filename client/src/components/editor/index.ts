@@ -7,3 +7,4 @@ export { TextBlock } from './blocks/TextBlock';
 export { ImageBlock } from './blocks/ImageBlock';
 export { FileBlock } from './blocks/FileBlock';
 export { BlockMenu } from './blocks/BlockMenu';
+export { VersionHistoryModal } from './VersionHistoryModal';

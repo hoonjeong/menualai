@@ -9,9 +9,10 @@ interface EditorProps {
   document?: Document;
   blocks?: Block[];
   onSave?: (document: Document, blocks: Block[]) => Promise<void>;
+  onReload?: () => void;
 }
 
-export function Editor({ document, blocks: initialBlocks, onSave }: EditorProps) {
+export function Editor({ document, blocks: initialBlocks, onSave, onReload }: EditorProps) {
   const {
     setDocument,
     setBlocks,
@@ -51,7 +52,7 @@ export function Editor({ document, blocks: initialBlocks, onSave }: EditorProps)
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
       {/* 툴바 */}
-      <EditorToolbar onSave={handleSave} />
+      <EditorToolbar documentId={document?.id} onSave={handleSave} onReload={onReload} />
 
       {/* 에디터 본문 */}
       <div className="max-w-4xl mx-auto px-4 py-6">

@@ -10,8 +10,9 @@ import {
   Download,
   X,
 } from 'lucide-react';
-import { useEditorStore } from '../../../stores';
+import { useEditorStore, toast } from '../../../stores';
 import { BaseBlock } from './BaseBlock';
+import { blockApi } from '../../../api/client';
 import type { Block } from '../../../types';
 import clsx from 'clsx';
 
@@ -63,25 +64,26 @@ export function FileBlock({ block }: FileBlockProps) {
       }
     }
 
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error('파일 크기는 50MB 이하여야 합니다.');
+      return;
+    }
+
     setIsUploading(true);
 
     try {
-      // 로컬 미리보기를 위한 Data URL 생성
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        updateBlock(block.id, {
-          fileUrl: dataUrl,
-          fileName: file.name,
-          fileSize: file.size,
-        });
-        setIsUploading(false);
-      };
-      reader.readAsDataURL(file);
+      // 서버에 파일 업로드
+      const response = await blockApi.upload(file);
 
-      // TODO: 실제 서버 업로드 구현
+      updateBlock(block.id, {
+        fileUrl: response.url,
+        fileName: response.filename,
+        fileSize: response.size,
+      });
     } catch (error) {
       console.error('파일 업로드 실패:', error);
+      toast.error('파일 업로드에 실패했습니다.');
+    } finally {
       setIsUploading(false);
     }
   }, [block.id, updateBlock]);

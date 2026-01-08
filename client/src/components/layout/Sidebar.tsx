@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
   FolderOpen,
@@ -14,6 +14,7 @@ import clsx from 'clsx';
 
 export function Sidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { sidebarOpen, toggleSidebar, setSearchOpen } = useUIStore();
   const { workspaces, currentWorkspace, fetchWorkspaces } = useWorkspaceStore();
   const { user } = useAuthStore();
@@ -102,7 +103,11 @@ export function Sidebar() {
               <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
                 사업 목록
               </span>
-              <button className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
+              <button
+                onClick={() => navigate('/workspace/new')}
+                className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+                title="새 사업 만들기"
+              >
                 <Plus className="w-4 h-4 text-gray-500" />
               </button>
             </div>

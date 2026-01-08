@@ -11,6 +11,7 @@ import workspaceRoutes from './routes/workspaces.js';
 import categoryRoutes from './routes/categories.js';
 import documentRoutes from './routes/documents.js';
 import blockRoutes from './routes/blocks.js';
+import favoriteRoutes from './routes/favorites.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -54,6 +55,7 @@ app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/blocks', blockRoutes);
+app.use('/api/favorites', favoriteRoutes);
 
 // 404 처리
 app.use((req, res) => {

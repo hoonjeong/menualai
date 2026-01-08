@@ -7,19 +7,22 @@ import {
   Type,
   Image,
   FileText,
-  MoreVertical,
+  History,
   Check,
   Loader2,
 } from 'lucide-react';
 import { useEditorStore } from '../../stores';
+import { VersionHistoryModal } from './VersionHistoryModal';
 import type { BlockType } from '../../types';
 import clsx from 'clsx';
 
 interface EditorToolbarProps {
+  documentId?: number;
   onSave?: () => Promise<void>;
+  onReload?: () => void;
 }
 
-export function EditorToolbar({ onSave }: EditorToolbarProps) {
+export function EditorToolbar({ documentId, onSave, onReload }: EditorToolbarProps) {
   const navigate = useNavigate();
   const {
     documentTitle,
@@ -32,6 +35,7 @@ export function EditorToolbar({ onSave }: EditorToolbarProps) {
 
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
 
   // 저장 처리
   const handleSave = async () => {
@@ -172,12 +176,31 @@ export function EditorToolbar({ onSave }: EditorToolbarProps) {
             </span>
           </button>
 
-          {/* 더보기 메뉴 */}
-          <button className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400">
-            <MoreVertical className="w-5 h-5" />
-          </button>
+          {/* 버전 기록 버튼 */}
+          {documentId && (
+            <button
+              onClick={() => setShowVersionHistory(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
+              title="버전 기록"
+            >
+              <History className="w-4 h-4" />
+              <span className="text-sm">버전 기록</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* 버전 기록 모달 */}
+      {documentId && (
+        <VersionHistoryModal
+          documentId={documentId}
+          isOpen={showVersionHistory}
+          onClose={() => setShowVersionHistory(false)}
+          onRestore={() => {
+            if (onReload) onReload();
+          }}
+        />
+      )}
     </div>
   );
 }

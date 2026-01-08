@@ -5,3 +5,5 @@ export { Workspaces } from './Workspaces';
 export { WorkspaceNew } from './WorkspaceNew';
 export { WorkspaceDetail } from './WorkspaceDetail';
 export { DocumentEditor } from './DocumentEditor';
+export { Documents } from './Documents';
+export { Settings } from './Settings';

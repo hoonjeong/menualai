@@ -2,8 +2,9 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MainLayout } from './components/layout';
-import { Dashboard, Login, Register, Workspaces, WorkspaceNew, WorkspaceDetail, DocumentEditor } from './pages';
-import { useAuthStore, useUIStore } from './stores';
+import { Dashboard, Login, Register, Workspaces, WorkspaceNew, WorkspaceDetail, DocumentEditor, Documents, Settings } from './pages';
+import { useAuthStore, useUIStore, useToastStore } from './stores';
+import { ToastContainer } from './components/common/Toast';
 
 // React Query 클라이언트
 const queryClient = new QueryClient({
@@ -61,6 +62,7 @@ function ThemeInitializer({ children }: { children: React.ReactNode }) {
 
 function App() {
   const { checkAuth } = useAuthStore();
+  const { toasts, removeToast } = useToastStore();
 
   // 앱 초기화 시 인증 상태 확인
   useEffect(() => {
@@ -89,10 +91,10 @@ function App() {
               <Route path="workspaces" element={<Workspaces />} />
               <Route path="workspace/new" element={<WorkspaceNew />} />
               <Route path="workspace/:id" element={<WorkspaceDetail />} />
-              <Route path="documents" element={<div className="text-center py-12 text-gray-500">문서 목록 페이지 (준비 중)</div>} />
+              <Route path="documents" element={<Documents />} />
               <Route path="document/:id" element={<DocumentEditor />} />
               <Route path="document/:id/edit" element={<DocumentEditor />} />
-              <Route path="settings" element={<div className="text-center py-12 text-gray-500">설정 페이지 (준비 중)</div>} />
+              <Route path="settings" element={<Settings />} />
             </Route>
 
             {/* 404 */}
@@ -109,6 +111,7 @@ function App() {
               }
             />
           </Routes>
+          <ToastContainer toasts={toasts} onClose={removeToast} />
         </BrowserRouter>
       </ThemeInitializer>
     </QueryClientProvider>

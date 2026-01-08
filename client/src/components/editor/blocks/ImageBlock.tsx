@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback } from 'react';
 import { ImagePlus, X, Upload } from 'lucide-react';
-import { useEditorStore } from '../../../stores';
+import { useEditorStore, toast } from '../../../stores';
 import { BaseBlock } from './BaseBlock';
+import { blockApi } from '../../../api/client';
 import type { Block } from '../../../types';
 import clsx from 'clsx';
 
@@ -20,33 +21,30 @@ export function ImageBlock({ block }: ImageBlockProps) {
   // 파일 선택 처리
   const handleFileSelect = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert('이미지 파일만 업로드할 수 있습니다.');
+      toast.error('이미지 파일만 업로드할 수 있습니다.');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('파일 크기는 10MB 이하여야 합니다.');
       return;
     }
 
     setIsUploading(true);
 
     try {
-      // 로컬 미리보기를 위한 Data URL 생성
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        updateBlock(block.id, {
-          fileUrl: dataUrl,
-          fileName: file.name,
-          fileSize: file.size,
-        });
-        setIsUploading(false);
-      };
-      reader.readAsDataURL(file);
+      // 서버에 파일 업로드
+      const response = await blockApi.upload(file);
 
-      // TODO: 실제 서버 업로드 구현
-      // const formData = new FormData();
-      // formData.append('file', file);
-      // const response = await api.uploadFile(formData);
-      // updateBlock(block.id, { fileUrl: response.url, ... });
+      updateBlock(block.id, {
+        fileUrl: response.url,
+        fileName: response.filename,
+        fileSize: response.size,
+      });
     } catch (error) {
       console.error('이미지 업로드 실패:', error);
+      toast.error('이미지 업로드에 실패했습니다.');
+    } finally {
       setIsUploading(false);
     }
   }, [block.id, updateBlock]);

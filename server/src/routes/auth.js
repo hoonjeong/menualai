@@ -122,4 +122,193 @@ router.post('/logout', authenticate, (req, res) => {
   res.json({ message: '로그아웃 되었습니다.' });
 });
 
+/**
+ * PUT /api/auth/profile - 프로필 업데이트
+ */
+router.put('/profile', authenticate, async (req, res, next) => {
+  try {
+    const { name, organization } = req.body;
+    const userId = req.user.id;
+
+    // 이름 유효성 검사
+    if (name !== undefined && !name.trim()) {
+      return res.status(400).json({ error: '이름은 필수입니다.' });
+    }
+
+    // 업데이트
+    await db.execute(
+      'UPDATE users SET name = COALESCE(?, name), organization = COALESCE(?, organization), updated_at = NOW() WHERE id = ?',
+      [name?.trim(), organization?.trim() || null, userId]
+    );
+
+    // 업데이트된 사용자 정보 조회
+    const [users] = await db.execute('SELECT * FROM users WHERE id = ?', [userId]);
+
+    res.json({
+      message: '프로필이 업데이트되었습니다.',
+      user: formatUser(users[0]),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/auth/password - 비밀번호 변경
+ */
+router.put('/password', authenticate, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id;
+
+    // 유효성 검사
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: '현재 비밀번호와 새 비밀번호를 입력해주세요.' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: '새 비밀번호는 최소 6자 이상이어야 합니다.' });
+    }
+
+    // 현재 사용자 조회
+    const [users] = await db.execute('SELECT password_hash FROM users WHERE id = ?', [userId]);
+    if (users.length === 0) {
+      return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+    }
+
+    // 현재 비밀번호 검증
+    const isValidPassword = await bcrypt.compare(currentPassword, users[0].password_hash);
+    if (!isValidPassword) {
+      return res.status(401).json({ error: '현재 비밀번호가 올바르지 않습니다.' });
+    }
+
+    // 새 비밀번호 해시
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // 비밀번호 업데이트
+    await db.execute('UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ?', [
+      hashedPassword,
+      userId,
+    ]);
+
+    res.json({ message: '비밀번호가 변경되었습니다.' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/auth/account - 계정 삭제
+ */
+router.delete('/account', authenticate, async (req, res, next) => {
+  const connection = await db.getConnection();
+
+  try {
+    const { password } = req.body;
+    const userId = req.user.id;
+
+    // 비밀번호 확인
+    if (!password) {
+      connection.release();
+      return res.status(400).json({ error: '비밀번호를 입력해주세요.' });
+    }
+
+    // 현재 사용자 조회
+    const [users] = await connection.execute('SELECT password_hash FROM users WHERE id = ?', [userId]);
+    if (users.length === 0) {
+      connection.release();
+      return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+    }
+
+    // 비밀번호 검증
+    const isValidPassword = await bcrypt.compare(password, users[0].password_hash);
+    if (!isValidPassword) {
+      connection.release();
+      return res.status(401).json({ error: '비밀번호가 올바르지 않습니다.' });
+    }
+
+    // 트랜잭션으로 관련 데이터 모두 삭제
+    await connection.beginTransaction();
+
+    try {
+      // 소유한 워크스페이스 목록 조회
+      const [ownedWorkspaces] = await connection.execute(
+        'SELECT id FROM workspaces WHERE owner_id = ?',
+        [userId]
+      );
+
+      // 각 소유 워크스페이스의 관련 데이터 삭제
+      for (const ws of ownedWorkspaces) {
+        // 블록 삭제
+        await connection.execute(`
+          DELETE FROM blocks WHERE document_id IN (
+            SELECT id FROM documents WHERE category_id IN (
+              SELECT id FROM categories WHERE workspace_id = ?
+            )
+          )
+        `, [ws.id]);
+
+        // 문서 버전 삭제
+        await connection.execute(`
+          DELETE FROM document_versions WHERE document_id IN (
+            SELECT id FROM documents WHERE category_id IN (
+              SELECT id FROM categories WHERE workspace_id = ?
+            )
+          )
+        `, [ws.id]);
+
+        // 즐겨찾기 삭제
+        await connection.execute(`
+          DELETE FROM favorites WHERE document_id IN (
+            SELECT id FROM documents WHERE category_id IN (
+              SELECT id FROM categories WHERE workspace_id = ?
+            )
+          )
+        `, [ws.id]);
+
+        // 문서 삭제
+        await connection.execute(`
+          DELETE FROM documents WHERE category_id IN (
+            SELECT id FROM categories WHERE workspace_id = ?
+          )
+        `, [ws.id]);
+
+        // 카테고리 삭제
+        await connection.execute('DELETE FROM categories WHERE workspace_id = ?', [ws.id]);
+
+        // 멤버 삭제
+        await connection.execute('DELETE FROM workspace_members WHERE workspace_id = ?', [ws.id]);
+
+        // 초대 삭제
+        await connection.execute('DELETE FROM invitations WHERE workspace_id = ?', [ws.id]);
+
+        // 워크스페이스 삭제
+        await connection.execute('DELETE FROM workspaces WHERE id = ?', [ws.id]);
+      }
+
+      // 다른 워크스페이스에서 멤버십 삭제
+      await connection.execute('DELETE FROM workspace_members WHERE user_id = ?', [userId]);
+
+      // 사용자의 즐겨찾기 삭제
+      await connection.execute('DELETE FROM favorites WHERE user_id = ?', [userId]);
+
+      // AI 채팅 기록 삭제
+      await connection.execute('DELETE FROM ai_chat_messages WHERE user_id = ?', [userId]);
+
+      // 사용자 삭제
+      await connection.execute('DELETE FROM users WHERE id = ?', [userId]);
+
+      await connection.commit();
+      res.json({ message: '계정이 삭제되었습니다.' });
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    }
+  } catch (error) {
+    next(error);
+  } finally {
+    connection.release();
+  }
+});
+
 export default router;

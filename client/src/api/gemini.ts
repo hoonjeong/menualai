@@ -1,11 +1,24 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// 환경 변수에서 API 키 가져오기
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+// 환경 변수 또는 localStorage에서 API 키 가져오기
+const ENV_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const STORAGE_KEY = 'gemini_api_key';
 const MODEL_NAME = import.meta.env.VITE_GEMINI_MODEL || 'gemini-1.5-flash';
 
-// Gemini API 클라이언트 초기화
-const genAI = API_KEY ? new GoogleGenerativeAI(API_KEY) : null;
+// API 키 가져오기 (localStorage 우선)
+function getApiKey(): string | null {
+  const storedKey = localStorage.getItem(STORAGE_KEY);
+  return storedKey || ENV_API_KEY || null;
+}
+
+// Gemini API 클라이언트 생성
+function createClient(): GoogleGenerativeAI | null {
+  const apiKey = getApiKey();
+  return apiKey ? new GoogleGenerativeAI(apiKey) : null;
+}
+
+// 초기 클라이언트
+let genAI = createClient();
 
 // 시스템 프롬프트 - 경영/운영/서비스 매뉴얼 전문가
 const SYSTEM_PROMPT = `# 1. 페르소나 (Persona)
@@ -193,5 +206,44 @@ export function getChatHistory(): ChatMessage[] {
  * API 키 설정 여부 확인
  */
 export function isApiKeyConfigured(): boolean {
-  return !!API_KEY;
+  return !!getApiKey();
+}
+
+/**
+ * API 키 설정
+ */
+export function setGeminiApiKey(apiKey: string): void {
+  if (apiKey.trim()) {
+    localStorage.setItem(STORAGE_KEY, apiKey.trim());
+  } else {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+  // 클라이언트 재생성
+  genAI = createClient();
+}
+
+/**
+ * 현재 저장된 API 키 가져오기 (마스킹됨)
+ */
+export function getStoredApiKey(): string {
+  const key = localStorage.getItem(STORAGE_KEY);
+  if (!key) return '';
+  // 앞 4자리만 보여주고 나머지는 마스킹
+  if (key.length <= 8) return '****';
+  return key.substring(0, 4) + '*'.repeat(key.length - 8) + key.substring(key.length - 4);
+}
+
+/**
+ * API 키 삭제
+ */
+export function clearGeminiApiKey(): void {
+  localStorage.removeItem(STORAGE_KEY);
+  genAI = createClient();
+}
+
+/**
+ * API 키가 localStorage에 저장되어 있는지 확인
+ */
+export function hasStoredApiKey(): boolean {
+  return !!localStorage.getItem(STORAGE_KEY);
 }

@@ -358,6 +358,80 @@ router.get('/:id/versions', authenticate, async (req, res, next) => {
 });
 
 /**
+ * POST /api/documents/:id/restore/:versionId - 버전 복원
+ */
+router.post('/:id/restore/:versionId', authenticate, async (req, res, next) => {
+  const connection = await db.getConnection();
+
+  try {
+    const { id, versionId } = req.params;
+
+    const role = await checkDocumentAccess(req.user.id, id, 'editor');
+    if (!role) {
+      connection.release();
+      return res.status(403).json({ error: '복원 권한이 없습니다.' });
+    }
+
+    // 버전 조회
+    const [versionRows] = await connection.execute(
+      'SELECT * FROM document_versions WHERE id = ? AND document_id = ?',
+      [versionId, id]
+    );
+
+    if (versionRows.length === 0) {
+      connection.release();
+      return res.status(404).json({ error: '버전을 찾을 수 없습니다.' });
+    }
+
+    const version = versionRows[0];
+    const blocks = JSON.parse(version.snapshot);
+
+    await connection.beginTransaction();
+
+    try {
+      // 현재 상태를 새 버전으로 저장
+      const [currentBlocks] = await connection.execute('SELECT * FROM blocks WHERE document_id = ?', [id]);
+      const [nextVersionRows] = await connection.execute(
+        'SELECT COALESCE(MAX(version_number), 0) + 1 as next FROM document_versions WHERE document_id = ?',
+        [id]
+      );
+      const nextVersionNumber = nextVersionRows[0].next;
+
+      await connection.execute(
+        'INSERT INTO document_versions (document_id, version_number, snapshot, change_summary, created_by) VALUES (?, ?, ?, ?, ?)',
+        [id, nextVersionNumber, JSON.stringify(currentBlocks), `버전 ${version.version_number}에서 복원`, req.user.id]
+      );
+
+      // 기존 블록 삭제
+      await connection.execute('DELETE FROM blocks WHERE document_id = ?', [id]);
+
+      // 복원할 블록 삽입
+      for (let index = 0; index < blocks.length; index++) {
+        const block = blocks[index];
+        await connection.execute(
+          `INSERT INTO blocks (document_id, block_type, content, file_url, file_name, file_size, sort_order)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [id, block.block_type, block.content || '', block.file_url || null, block.file_name || null, block.file_size || null, index + 1]
+        );
+      }
+
+      // 문서 업데이트 시간 갱신
+      await connection.execute('UPDATE documents SET updated_at = NOW() WHERE id = ?', [id]);
+
+      await connection.commit();
+      res.json({ message: `버전 ${version.version_number}이(가) 복원되었습니다.` });
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    }
+  } catch (error) {
+    next(error);
+  } finally {
+    connection.release();
+  }
+});
+
+/**
  * DELETE /api/documents/:id - 문서 삭제
  */
 router.delete('/:id', authenticate, async (req, res, next) => {

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Workspace, Category, Document } from '../types';
-import { workspaceApi, documentApi } from '../api/client';
+import { workspaceApi } from '../api/client';
 
 interface WorkspaceState {
   // 현재 선택된 항목
@@ -71,7 +71,7 @@ const initialState = {
   error: null as string | null,
 };
 
-export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
+export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   ...initialState,
 
   fetchWorkspaces: async () => {
@@ -88,35 +88,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   fetchRecentDocuments: async () => {
-    try {
-      const response = await documentApi.list();
-      // 최근 수정된 순으로 정렬하여 상위 5개만 가져오기
-      const sorted = response.documents
-        .sort((a: { updatedAt: string }, b: { updatedAt: string }) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-        )
-        .slice(0, 5);
-
-      // 워크스페이스 이름 매핑
-      const workspaces = get().workspaces;
-      const recentDocs = sorted.map((doc: {
-        id: number;
-        title: string;
-        workspaceId?: number;
-        updatedAt: string;
-      }) => {
-        const ws = workspaces.find((w) => w.id === doc.workspaceId);
-        return {
-          id: doc.id,
-          title: doc.title,
-          workspaceName: ws?.name || '알 수 없음',
-          updatedAt: doc.updatedAt,
-        };
-      });
-      set({ recentDocuments: recentDocs });
-    } catch (err) {
-      console.error('최근 문서 로드 실패:', err);
-    }
+    // 최근 문서는 로컬 스토리지에서 관리하거나
+    // 별도 API endpoint가 필요함
+    // 현재는 빈 배열로 초기화
+    set({ recentDocuments: [] });
   },
 
   clearError: () => set({ error: null }),

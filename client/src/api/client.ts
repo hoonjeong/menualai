@@ -102,6 +102,33 @@ export const authApi = {
    * 로그아웃
    */
   logout: () => request<{ message: string }>('/auth/logout', { method: 'POST' }),
+
+  /**
+   * 프로필 업데이트
+   */
+  updateProfile: (data: { name?: string; organization?: string }) =>
+    request<{ message: string; user: User }>('/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * 비밀번호 변경
+   */
+  changePassword: (data: { currentPassword: string; newPassword: string }) =>
+    request<{ message: string }>('/auth/password', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * 계정 삭제
+   */
+  deleteAccount: (password: string) =>
+    request<{ message: string }>('/auth/account', {
+      method: 'DELETE',
+      body: JSON.stringify({ password }),
+    }),
 };
 
 // ============ 워크스페이스 API ============
@@ -115,6 +142,7 @@ export interface Workspace {
   myRole: string;
   categoryCount?: number;
   memberCount?: number;
+  documentCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -436,6 +464,45 @@ export const blockApi = {
       isImage: boolean;
     }>;
   },
+};
+
+// ============ 즐겨찾기 API ============
+
+export interface Favorite {
+  id: number;
+  documentId: number;
+  documentTitle: string;
+  categoryName: string;
+  workspaceName: string;
+  createdAt: string;
+}
+
+export const favoriteApi = {
+  /**
+   * 즐겨찾기 목록
+   */
+  list: () => request<{ favorites: Favorite[] }>('/favorites'),
+
+  /**
+   * 즐겨찾기 추가
+   */
+  add: (documentId: number) =>
+    request<{ favorite: Favorite }>('/favorites', {
+      method: 'POST',
+      body: JSON.stringify({ documentId }),
+    }),
+
+  /**
+   * 즐겨찾기 제거
+   */
+  remove: (documentId: number) =>
+    request<{ message: string }>(`/favorites/${documentId}`, { method: 'DELETE' }),
+
+  /**
+   * 즐겨찾기 여부 확인
+   */
+  check: (documentId: number) =>
+    request<{ isFavorite: boolean }>(`/favorites/check/${documentId}`),
 };
 
 // ============ 헬스 체크 ============

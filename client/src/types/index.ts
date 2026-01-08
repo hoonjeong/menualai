@@ -3,8 +3,9 @@ export interface User {
   id: number;
   email: string;
   name: string;
-  profileImage?: string;
+  profileImage?: string | null;
   organization?: string;
+  role?: string;
   createdAt: string;
   lastLoginAt?: string;
 }
@@ -16,7 +17,11 @@ export interface Workspace {
   description?: string;
   icon?: string;
   ownerId: number;
-  status: 'active' | 'inactive' | 'archived';
+  myRole?: string;
+  status?: 'active' | 'inactive' | 'archived';
+  memberCount?: number;
+  documentCount?: number;
+  categoryCount?: number;
   createdAt: string;
   updatedAt: string;
 }
