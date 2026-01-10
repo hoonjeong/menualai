@@ -61,13 +61,13 @@ function ThemeInitializer({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  const { checkAuth } = useAuthStore();
+  const { initAuth } = useAuthStore();
   const { toasts, removeToast } = useToastStore();
 
-  // 앱 초기화 시 인증 상태 확인
+  // 앱 초기화 시 세션 복원 시도
   useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
+    initAuth();
+  }, [initAuth]);
 
   return (
     <QueryClientProvider client={queryClient}>

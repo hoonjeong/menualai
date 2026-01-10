@@ -4,30 +4,62 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
-// 토큰 저장소
-let authToken: string | null = localStorage.getItem('token');
+// Access Token은 메모리에만 저장 (localStorage 사용 안 함)
+let accessToken: string | null = null;
+
+// 토큰 갱신 중복 방지를 위한 Promise
+let refreshPromise: Promise<string | null> | null = null;
 
 /**
- * 인증 토큰 설정
+ * Access Token 설정 (메모리 저장)
  */
-export function setAuthToken(token: string | null) {
-  authToken = token;
-  if (token) {
-    localStorage.setItem('token', token);
-  } else {
-    localStorage.removeItem('token');
+export function setAccessToken(token: string | null) {
+  accessToken = token;
+}
+
+/**
+ * Access Token 가져오기
+ */
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
+/**
+ * Refresh Token으로 Access Token 갱신
+ */
+async function refreshAccessToken(): Promise<string | null> {
+  // 이미 갱신 중이면 기존 Promise 반환 (중복 요청 방지)
+  if (refreshPromise) {
+    return refreshPromise;
   }
+
+  refreshPromise = (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include', // 쿠키 포함
+      });
+
+      if (!response.ok) {
+        throw new Error('Token refresh failed');
+      }
+
+      const data = await response.json();
+      accessToken = data.accessToken;
+      return accessToken;
+    } catch (error) {
+      accessToken = null;
+      throw error;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }
 
 /**
- * 인증 토큰 가져오기
- */
-export function getAuthToken(): string | null {
-  return authToken;
-}
-
-/**
- * API 요청 기본 함수
+ * API 요청 기본 함수 (자동 토큰 갱신 포함)
  */
 async function request<T>(
   endpoint: string,
@@ -35,19 +67,45 @@ async function request<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...options.headers,
+  const makeRequest = async (token: string | null): Promise<Response> => {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    };
+
+    if (token) {
+      (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+    }
+
+    return fetch(url, {
+      ...options,
+      headers,
+      credentials: 'include', // 쿠키 포함
+    });
   };
 
-  if (authToken) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${authToken}`;
-  }
+  let response = await makeRequest(accessToken);
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  // 401 에러이고 TOKEN_EXPIRED인 경우 토큰 갱신 시도
+  if (response.status === 401) {
+    const errorData = await response.json().catch(() => ({}));
+
+    if (errorData.code === 'TOKEN_EXPIRED') {
+      try {
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          // 새 토큰으로 재요청
+          response = await makeRequest(newToken);
+        }
+      } catch {
+        // 갱신 실패 시 로그아웃 이벤트 발생
+        window.dispatchEvent(new CustomEvent('auth:logout'));
+        throw new Error('세션이 만료되었습니다. 다시 로그인해주세요.');
+      }
+    } else {
+      throw new Error(errorData.error || '인증에 실패했습니다.');
+    }
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
@@ -70,7 +128,7 @@ export interface User {
 
 export interface AuthResponse {
   message: string;
-  token: string;
+  accessToken: string;
   user: User;
 }
 
@@ -78,20 +136,44 @@ export const authApi = {
   /**
    * 회원가입
    */
-  register: (data: { email: string; password: string; name: string }) =>
-    request<AuthResponse>('/auth/register', {
+  register: async (data: { email: string; password: string; name: string }) => {
+    const response = await fetch(`${API_BASE_URL}/auth/register`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
-    }),
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || '회원가입에 실패했습니다.');
+    }
+
+    const result: AuthResponse = await response.json();
+    setAccessToken(result.accessToken);
+    return result;
+  },
 
   /**
    * 로그인
    */
-  login: (data: { email: string; password: string }) =>
-    request<AuthResponse>('/auth/login', {
+  login: async (data: { email: string; password: string; rememberMe?: boolean }) => {
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
-    }),
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || '로그인에 실패했습니다.');
+    }
+
+    const result: AuthResponse = await response.json();
+    setAccessToken(result.accessToken);
+    return result;
+  },
 
   /**
    * 현재 사용자 정보
@@ -101,7 +183,38 @@ export const authApi = {
   /**
    * 로그아웃
    */
-  logout: () => request<{ message: string }>('/auth/logout', { method: 'POST' }),
+  logout: async () => {
+    try {
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } finally {
+      setAccessToken(null);
+    }
+  },
+
+  /**
+   * 토큰 갱신 시도 (앱 초기화 시 사용)
+   */
+  refreshToken: async (): Promise<AuthResponse | null> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const result: AuthResponse = await response.json();
+      setAccessToken(result.accessToken);
+      return result;
+    } catch {
+      return null;
+    }
+  },
 
   /**
    * 프로필 업데이트
@@ -447,8 +560,9 @@ export const blockApi = {
 
     const response = await fetch(`${API_BASE_URL}/blocks/upload`, {
       method: 'POST',
-      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
       body: formData,
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -509,3 +623,10 @@ export const favoriteApi = {
 
 export const healthCheck = () =>
   request<{ status: string; timestamp: string }>('/health');
+
+// ============ 기존 localStorage 정리 (마이그레이션) ============
+
+export function clearLegacyStorage() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('auth-storage');
+}

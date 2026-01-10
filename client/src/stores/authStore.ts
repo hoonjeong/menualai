@@ -1,135 +1,120 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type { User } from '../types';
-import { setAuthToken, authApi } from '../api/client';
+import { setAccessToken, authApi, clearLegacyStorage } from '../api/client';
 
 interface AuthState {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
 
   // Actions
   setUser: (user: User | null) => void;
-  setToken: (token: string | null) => void;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
-  logout: () => void;
-  checkAuth: () => Promise<void>;
+  logout: () => Promise<void>;
+  initAuth: () => Promise<void>;
   setLoading: (loading: boolean) => void;
   clearError: () => void;
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
+export const useAuthStore = create<AuthState>()((set) => ({
+  user: null,
+  isAuthenticated: false,
+  isLoading: true,
+  error: null,
+
+  setUser: (user) => set({ user, isAuthenticated: !!user }),
+
+  login: async (email, password, rememberMe = false) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await authApi.login({ email, password, rememberMe });
+      set({
+        user: response.user as User,
+        isAuthenticated: true,
+        isLoading: false,
+      });
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : '로그인에 실패했습니다.',
+        isLoading: false,
+      });
+      throw err;
+    }
+  },
+
+  register: async (email, password, name) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await authApi.register({ email, password, name });
+      set({
+        user: response.user as User,
+        isAuthenticated: true,
+        isLoading: false,
+      });
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : '회원가입에 실패했습니다.',
+        isLoading: false,
+      });
+      throw err;
+    }
+  },
+
+  logout: async () => {
+    await authApi.logout();
+    set({
       user: null,
-      token: null,
       isAuthenticated: false,
-      isLoading: true,
-      error: null,
+    });
+  },
 
-      setUser: (user) => set({ user, isAuthenticated: !!user }),
+  // 앱 초기화 시 세션 복원 시도
+  initAuth: async () => {
+    set({ isLoading: true });
 
-      setToken: (token) => {
-        setAuthToken(token);
-        set({ token });
-      },
+    // 기존 localStorage 토큰 정리 (마이그레이션)
+    clearLegacyStorage();
 
-      login: async (email, password) => {
-        set({ isLoading: true, error: null });
-        try {
-          const response = await authApi.login({ email, password });
-          setAuthToken(response.token);
-          set({
-            user: response.user as User,
-            token: response.token,
-            isAuthenticated: true,
-            isLoading: false,
-          });
-        } catch (err) {
-          set({
-            error: err instanceof Error ? err.message : '로그인에 실패했습니다.',
-            isLoading: false,
-          });
-          throw err;
-        }
-      },
+    try {
+      // Refresh Token으로 세션 복원 시도
+      const response = await authApi.refreshToken();
 
-      register: async (email, password, name) => {
-        set({ isLoading: true, error: null });
-        try {
-          const response = await authApi.register({ email, password, name });
-          setAuthToken(response.token);
-          set({
-            user: response.user as User,
-            token: response.token,
-            isAuthenticated: true,
-            isLoading: false,
-          });
-        } catch (err) {
-          set({
-            error: err instanceof Error ? err.message : '회원가입에 실패했습니다.',
-            isLoading: false,
-          });
-          throw err;
-        }
-      },
-
-      logout: () => {
-        setAuthToken(null);
+      if (response) {
+        set({
+          user: response.user as User,
+          isAuthenticated: true,
+          isLoading: false,
+        });
+      } else {
         set({
           user: null,
-          token: null,
           isAuthenticated: false,
+          isLoading: false,
         });
-      },
-
-      checkAuth: async () => {
-        const { token } = get();
-        if (!token) {
-          set({ isLoading: false });
-          return;
-        }
-
-        setAuthToken(token);
-        try {
-          const response = await authApi.me();
-          set({
-            user: response.user as User,
-            isAuthenticated: true,
-            isLoading: false,
-          });
-        } catch {
-          // 토큰이 유효하지 않음
-          setAuthToken(null);
-          set({
-            user: null,
-            token: null,
-            isAuthenticated: false,
-            isLoading: false,
-          });
-        }
-      },
-
-      setLoading: (isLoading) => set({ isLoading }),
-
-      clearError: () => set({ error: null }),
-    }),
-    {
-      name: 'auth-storage',
-      partialize: (state) => ({
-        user: state.user,
-        token: state.token,
-        isAuthenticated: state.isAuthenticated,
-      }),
-      onRehydrateStorage: () => (state) => {
-        // 저장된 토큰이 있으면 API 클라이언트에도 설정
-        if (state?.token) {
-          setAuthToken(state.token);
-        }
-      },
+      }
+    } catch {
+      set({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+      });
     }
-  )
-);
+  },
+
+  setLoading: (isLoading) => set({ isLoading }),
+
+  clearError: () => set({ error: null }),
+}));
+
+// 로그아웃 이벤트 리스너 등록 (토큰 갱신 실패 시)
+if (typeof window !== 'undefined') {
+  window.addEventListener('auth:logout', () => {
+    setAccessToken(null);
+    useAuthStore.setState({
+      user: null,
+      isAuthenticated: false,
+    });
+  });
+}

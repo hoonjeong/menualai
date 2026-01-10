@@ -1,24 +1,16 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import db from '../db.js';
-import { authenticate, JWT_SECRET } from '../middleware/auth.js';
+import {
+  authenticate,
+  generateAccessToken,
+  generateRefreshToken,
+  verifyRefreshToken,
+  getCookieOptions,
+  formatUser,
+} from '../middleware/auth.js';
 
 const router = Router();
-
-// 사용자 정보를 camelCase로 변환
-function formatUser(user) {
-  if (!user) return null;
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    profileImage: user.profile_image,
-    organization: user.organization,
-    role: 'user', // 기본 역할
-    createdAt: user.created_at,
-  };
-}
 
 /**
  * POST /api/auth/register - 회원가입
@@ -49,15 +41,19 @@ router.post('/register', async (req, res, next) => {
 
     const userId = result.insertId;
 
-    // JWT 토큰 생성
-    const token = jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
+    // Access Token + Refresh Token 생성
+    const accessToken = generateAccessToken(userId);
+    const refreshToken = generateRefreshToken(userId);
+
+    // Refresh Token을 HttpOnly 쿠키로 설정 (회원가입은 세션 쿠키)
+    res.cookie('refreshToken', refreshToken, getCookieOptions(false));
 
     // 사용자 정보 조회
     const [users] = await db.execute('SELECT * FROM users WHERE id = ?', [userId]);
 
     res.status(201).json({
       message: '회원가입이 완료되었습니다.',
-      token,
+      accessToken,
       user: formatUser(users[0]),
     });
   } catch (error) {
@@ -70,7 +66,7 @@ router.post('/register', async (req, res, next) => {
  */
 router.post('/login', async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, rememberMe } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: '이메일과 비밀번호를 입력해주세요.' });
@@ -90,19 +86,59 @@ router.post('/login', async (req, res, next) => {
       return res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.' });
     }
 
-    // JWT 토큰 생성
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    // Access Token + Refresh Token 생성
+    const accessToken = generateAccessToken(user.id);
+    const refreshToken = generateRefreshToken(user.id);
+
+    // Refresh Token을 HttpOnly 쿠키로 설정 (rememberMe에 따라)
+    res.cookie('refreshToken', refreshToken, getCookieOptions(rememberMe === true));
 
     // 마지막 로그인 시간 업데이트
     await db.execute('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
 
     res.json({
       message: '로그인 성공',
-      token,
+      accessToken,
       user: formatUser(user),
     });
   } catch (error) {
     next(error);
+  }
+});
+
+/**
+ * POST /api/auth/refresh - Access Token 갱신
+ */
+router.post('/refresh', async (req, res, next) => {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+
+    if (!refreshToken) {
+      return res.status(401).json({ error: 'Refresh Token이 없습니다.' });
+    }
+
+    // Refresh Token 검증
+    const decoded = verifyRefreshToken(refreshToken);
+
+    // 사용자 존재 확인
+    const [users] = await db.execute('SELECT * FROM users WHERE id = ?', [decoded.userId]);
+
+    if (users.length === 0) {
+      res.clearCookie('refreshToken', { path: '/' });
+      return res.status(401).json({ error: '사용자를 찾을 수 없습니다.' });
+    }
+
+    // 새로운 Access Token 발급
+    const newAccessToken = generateAccessToken(decoded.userId);
+
+    res.json({
+      accessToken: newAccessToken,
+      user: formatUser(users[0]),
+    });
+  } catch (error) {
+    // Refresh Token 만료 또는 유효하지 않음
+    res.clearCookie('refreshToken', { path: '/' });
+    return res.status(401).json({ error: '세션이 만료되었습니다. 다시 로그인해주세요.' });
   }
 });
 
@@ -114,11 +150,11 @@ router.get('/me', authenticate, (req, res) => {
 });
 
 /**
- * POST /api/auth/logout - 로그아웃 (클라이언트에서 토큰 삭제)
+ * POST /api/auth/logout - 로그아웃
  */
-router.post('/logout', authenticate, (req, res) => {
-  // JWT는 stateless이므로 서버에서 특별히 할 것은 없음
-  // 클라이언트에서 토큰을 삭제하면 됨
+router.post('/logout', (req, res) => {
+  // Refresh Token 쿠키 삭제
+  res.clearCookie('refreshToken', { path: '/' });
   res.json({ message: '로그아웃 되었습니다.' });
 });
 
@@ -299,6 +335,10 @@ router.delete('/account', authenticate, async (req, res, next) => {
       await connection.execute('DELETE FROM users WHERE id = ?', [userId]);
 
       await connection.commit();
+
+      // Refresh Token 쿠키 삭제
+      res.clearCookie('refreshToken', { path: '/' });
+
       res.json({ message: '계정이 삭제되었습니다.' });
     } catch (err) {
       await connection.rollback();
